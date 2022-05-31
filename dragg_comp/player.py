@@ -1,39 +1,32 @@
+# utilities
 import os
-import numpy as np
-import cvxpy as cp
+import json
+import logging
+from datetime import datetime
+from copy import deepcopy
+
+# redis with asyncronous implementation
 from redis import StrictRedis
 import redis
-import scipy.stats
-import logging
 import pathos
-from collections import defaultdict
-import json
-from copy import deepcopy
-import gym
-from gym.spaces import Box
-from datetime import datetime
-
 import asyncio
 import aioredis
 import async_timeout
 
+# openAI gym
+import gym
+from gym.spaces import Box
+
 from dragg.redis_client import RedisClient
 from dragg.logger import Logger
 from dragg.mpc_calc import MPCCalc
-from dragg.agent import RandomAgent
+from dragg_comp.agent import RandomAgent
 
 REDIS_URL = "redis://localhost"
 
 class PlayerHome(gym.Env):
     def __init__(self):
-        # redis = aioredis.from_url(REDIS_URL)
-        # pubsub = redis.pubsub()
-        # await pubsub.subscribe("channel:1", "channel:2")
-        # home = asyncio.run(self.set_home())
         home = self.set_home()
-        # await redis.publish("channel:1", "mpc_started")
-
-        
         self.home = MPCCalc(home)
         self.name = self.home.name
         with open('data/rl_data/state_action.json','r') as file:
@@ -45,7 +38,13 @@ class PlayerHome(gym.Env):
         asyncio.run(self.post_status("initialized as RL player"))
 
     def reset(self):
+        """
+        Reset as required by OpenAI gym. Beta implementation simply returns current observation, 
+        meaning that the simulation will overall continue running. 
+        :return: state vector of length n
+        """
         obs = self.get_obs()
+
         return obs 
 
     def set_home(self):
@@ -54,10 +53,6 @@ class PlayerHome(gym.Env):
         :return: MPCCalc object
         :input: None
         """
-        # async_redis = aioredis.from_url(REDIS_URL)
-        # pubsub = async_redis.pubsub()
-        # await pubsub.subscribe("channel:1", "channel:2")
-
         redis_client = RedisClient()
         home = redis_client.conn.hgetall("home_values")
         home['hvac'] = redis_client.conn.hgetall("hvac_values")
@@ -72,8 +67,6 @@ class PlayerHome(gym.Env):
         home['hems']['weekday_occ_schedule'] = redis_client.conn.lrange('weekday_occ_schedule', 0, -1)
         print(f"Welcome {home['name']}")
 
-        # await async_redis.publish("channel:1", "mpc_started")
-        
         return home
 
     def get_obs(self):
@@ -101,7 +94,8 @@ class PlayerHome(gym.Env):
 
     def step(self, action=None):
         """
-        Redefines the OpenAI Gym environment.
+        :input: action (list of floats)
+        Redefines the OpenAI Gym environment step.
         :return: observation (list of floats), reward (float), is_done (bool), debug_info (set)
         """
         fh = logging.FileHandler(os.path.join("home_logs", f"{self.name}.log"))
@@ -140,7 +134,11 @@ class PlayerHome(gym.Env):
         return self.get_obs(), self.get_reward(), False, {}
 
     async def await_status(self, status):
-        print("awaiting status")
+        """
+        :input: Status (string)
+        Opens and asynchronous reader and awaits the specified status
+        :return: None
+        """
         async_redis = aioredis.from_url(REDIS_URL)
         pubsub = async_redis.pubsub()
         await pubsub.subscribe("channel:1", "channel:2")
@@ -153,18 +151,23 @@ class PlayerHome(gym.Env):
                     if message is not None:
                         print(f"(Reader) Message Received: {message}")
                         if status in message["data"].decode():
-                            print("message received")
                             break
                     await asyncio.sleep(0.1)
             except asyncio.TimeoutError:
                 pass
-
+        return
 
     async def post_status(self, status):
+        """
+        :input: Status (string)
+        Publishes a status (typically "is done" to alert the aggregator)
+        :return: None
+        """
         async_redis = aioredis.from_url(REDIS_URL)
         pubsub = async_redis.pubsub()
         await pubsub.subscribe("channel:1")
         await async_redis.publish("channel:1", f"{self.home.name} {status}.")
+        return 
 
 if __name__=="__main__":
     tic = datetime.now()

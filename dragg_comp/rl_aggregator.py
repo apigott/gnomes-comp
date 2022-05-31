@@ -1,29 +1,24 @@
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+# utilities
 import os
 import sys
-import threading
-from queue import Queue
-
+from copy import copy, deepcopy
 import pandas as pd
 from datetime import datetime, timedelta
 import time
-import numpy as np
 import json
-import toml
-import random
-import names
-import string
-import itertools as it
-import redis
-import pathos
-from pathos.pools import ProcessPool
-from copy import copy, deepcopy
 
+# redis with asynchronous utilities
+import redis
 import asyncio
 import aioredis
 import async_timeout
+
+# pathos for parallelization
+import pathos
+from pathos.pools import ProcessPool
 
 # Local
 from dragg.mpc_calc import MPCCalc, manage_home
@@ -34,9 +29,13 @@ from dragg.logger import Logger
 class RLAggregator(Aggregator):
     def __init__(self):
         super().__init__()
-        self.mpc_players = []
+        self.mpc_players = [] # RLAggregator distinguishes between comp controlled (mpc_players) and human players
 
     def get_homes(self):
+        """
+        Creates randomized home parameters for R1C1 thermal models.
+        :return: None
+        """
         homes_file = os.path.join(self.outputs_dir, f"all_homes-{self.config['community']['total_number_homes']}-config.json")
         if not self.config['community']['overwrite_existing'] and os.path.isfile(homes_file):
             with open(homes_file) as f:
@@ -46,8 +45,13 @@ class RLAggregator(Aggregator):
             self.all_homes_copy = copy(self.all_homes)
         self._check_home_configs()
         self.write_home_configs()
+        return
 
     def post_next_home(self, initialize_mpc=False):
+        """
+        Posts parameters for an MPC (linearized R1C1 home) to the Redis server.
+        :return: None
+        """
         if not initialize_mpc:
             if len(self.all_homes_copy) > 0:
                 next_home = self.all_homes_copy.pop()
@@ -72,10 +76,16 @@ class RLAggregator(Aggregator):
                 self.mpc_players += [MPCCalc(next_home)]
                 print(f"Aggregator initialized {self.mpc_players[-1].name}")
 
+        return 
+
     async def reader(self, channel: aioredis.client.PubSub, redis_client):
-        print('calling reader')
+        """
+        Opens an asynchronous subscription to the specified PubSub channel on Redis. Awaits player 
+        controlled homes to announce that they've finished one timestep (or completed their initialization)
+        and made a control decision and implement it, then implements all computer controlled actions.
+        :return None:
+        """
         i = 0
-        
         while True:
             try:
                 async with async_timeout.timeout(1):
