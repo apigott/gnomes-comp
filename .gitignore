@@ -1,0 +1,10 @@
+.python-version
+*.pyc
+.DS_Store
+.idea
+archive
+*.log
+~$*.xlsx
+*rdb
+*home_logs
+*.log
