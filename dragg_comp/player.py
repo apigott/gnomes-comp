@@ -26,6 +26,8 @@ REDIS_URL = "redis://localhost"
 
 class PlayerHome(gym.Env):
     def __init__(self):
+        self.nstep = 0
+        asyncio.run(self.await_status("ready"))
         home = self.set_home()
         self.home = MPCCalc(home)
         self.name = self.home.name
@@ -35,7 +37,8 @@ class PlayerHome(gym.Env):
         self.observation_space = Box(-1, 1, shape=(len(self.states), ))
         self.actions = [k for k, v in states_actions['actions'].items() if v]
         self.action_space = Box(-1, 1, shape=(len(self.actions), ))
-        asyncio.run(self.post_status("initialized as RL player"))
+        asyncio.run(self.post_status("initialized player"))
+        asyncio.run(self.await_status("all ready"))
 
     def reset(self):
         """
@@ -54,6 +57,7 @@ class PlayerHome(gym.Env):
         :input: None
         """
         redis_client = RedisClient()
+        self.num_timesteps = int(redis_client.conn.hgetall("simulation")['nsteps'])
         home = redis_client.conn.hgetall("home_values")
         home['hvac'] = redis_client.conn.hgetall("hvac_values")
         home['wh'] = redis_client.conn.hgetall("wh_values")
@@ -98,6 +102,8 @@ class PlayerHome(gym.Env):
         Redefines the OpenAI Gym environment step.
         :return: observation (list of floats), reward (float), is_done (bool), debug_info (set)
         """
+        print("stepping forward")
+        self.nstep += 1
         fh = logging.FileHandler(os.path.join("home_logs", f"{self.name}.log"))
         fh.setLevel(logging.WARN)
 
@@ -152,7 +158,8 @@ class PlayerHome(gym.Env):
                         print(f"(Reader) Message Received: {message}")
                         if status in message["data"].decode():
                             break
-                    await asyncio.sleep(0.1)
+                        else:
+                            await asyncio.sleep(0.1)
             except asyncio.TimeoutError:
                 pass
         return
@@ -166,7 +173,8 @@ class PlayerHome(gym.Env):
         async_redis = aioredis.from_url(REDIS_URL)
         pubsub = async_redis.pubsub()
         await pubsub.subscribe("channel:1")
-        await async_redis.publish("channel:1", f"{self.home.name} {status}.")
+        print(f"{self.home.name} {status} at t = {self.nstep}.")
+        await async_redis.publish("channel:1", f"{self.home.name} {status} at t = {self.nstep}.")
         return 
 
 if __name__=="__main__":
@@ -174,7 +182,7 @@ if __name__=="__main__":
     my_home = PlayerHome()
     agent = RandomAgent(my_home)
 
-    for _ in range(24 * my_home.home.dt):
+    for _ in range(my_home.num_timesteps * my_home.home.dt):
         action = my_home.action_space.sample()
         my_home.step() 
 

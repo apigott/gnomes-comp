@@ -1,5 +1,3 @@
-import numpy as np
-
 class RandomAgent():
     def __init__(self, env):
         self.env = env
