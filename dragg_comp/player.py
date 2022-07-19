@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import datetime
 from copy import deepcopy
+import numpy as np
 
 # redis with asyncronous implementation
 from redis import StrictRedis
@@ -22,6 +23,9 @@ from dragg.logger import Logger
 from dragg.mpc_calc import MPCCalc
 from dragg_comp.agent import RandomAgent
 
+# player functions
+# from submission import reward, predict
+
 REDIS_URL = "redis://localhost"
 
 class PlayerHome(gym.Env):
@@ -39,6 +43,7 @@ class PlayerHome(gym.Env):
         self.action_space = Box(-1, 1, shape=(len(self.actions), ))
         asyncio.run(self.post_status("initialized player"))
         asyncio.run(self.await_status("all ready"))
+        self.demand_profile = []
 
     def reset(self):
         """
@@ -80,11 +85,42 @@ class PlayerHome(gym.Env):
         :return: list of float values
         """
         obs = []
+        self.obs_dict = {}
         for state in self.states:
             if state in self.home.optimal_vals.keys():
                 obs += [self.home.optimal_vals[state]]
+                self.obs_dict.update({state:self.home.optimal_vals[state]})
+            elif state == "leaving_horizon":
+                obs += [self.home.index_8am[0] if self.home.index_8am else -1]
+                self.obs_dict.update({state:self.home.index_8am[0] if self.home.index_8am else -1})
+            elif state == "returning_horizon":
+                obs += [self.home.index_5pm[0] if self.home.index_5pm else -1]
+                self.obs_dict.update({state:self.home.index_5pm[0] if self.home.index_5pm else -1})
+            elif state == "occupancy_status":
+                obs += [int(self.home.currently_occupied)]
+                self.obs_dict.update({state:int(self.home.currently_occupied)})
+            elif state == "future_waterdraws":
+                obs += [self.home.draw_frac.value]
+                self.obs_dict.update({state:self.home.draw_frac.value})
+            elif state == "oat_future":
+                obs += [self.home.oat_current[-1]]
+                self.obs_dict.update({state:self.home.oat_current[-1]})
+            elif state == "oat_current":
+                obs += [self.home.oat_current[0]]
+                self.obs_dict.update({state:self.home.oat_current[-1]})
+            elif state == "time_of_day":
+                tod = self.home.timestep % (24 * self.home.dt)
+                obs += [tod]
+                self.obs_dict.update({state:tod})
+            elif state == "community_demand":
+                community_demand = self.home.redis_client.conn.hget("current_values", "current_demand")
+                obs += [community_demand]
+                self.obs_dict.update({state:community_demand})
+            elif state == "my_demand":
+                obs += [self.home.stored_optimal_vals["p_grid_opt"][0]]
+                self.obs_dict.update({state:self.home.stored_optimal_vals["p_grid_opt"][0]})
             else:
-                obs += [0]
+                print(f"MISSING {state}")
 
         return obs
 
@@ -94,7 +130,17 @@ class PlayerHome(gym.Env):
         :return: float value normalized to [-1,1] 
         """
         reward = self.redis_client.conn.hget("current_values", "current_demand")
+        # reward(self)
         return reward
+
+    def score(self):
+        """
+        Calculates a score for the player in the game.
+        :return: dictionary of key performance indexes
+        """
+        kpis = {"std_demand": np.std(self.demand_profile), "max_demand": np.max(self.demand_profile)}
+        print(kpis)
+        return kpis
 
     def step(self, action=None):
         """
@@ -102,8 +148,9 @@ class PlayerHome(gym.Env):
         Redefines the OpenAI Gym environment step.
         :return: observation (list of floats), reward (float), is_done (bool), debug_info (set)
         """
-        print("stepping forward")
         self.nstep += 1
+        if not os.path.isdir("home_logs"):
+            os.mkdir("home_logs")
         fh = logging.FileHandler(os.path.join("home_logs", f"{self.name}.log"))
         fh.setLevel(logging.WARN)
 
@@ -116,26 +163,24 @@ class PlayerHome(gym.Env):
         if self.home.timestep > 0:
             self.home.redis_get_prev_optimal_vals()
 
-        if action:
-            temp = self.home.t_in_max 
-            start = (self.home.timestep * self.home.sub_subhourly_steps * self.home.dt) % (24 * self.home.sub_subhourly_steps * self.home.dt)
-            stop = start + (self.home.dt * self.home.sub_subhourly_steps)
-            self.home.t_in_max[start:stop] = [action + 0.5 * self.home.t_deadband] * self.home.dt * self.home.sub_subhourly_steps
-            self.home.t_in_min[start:stop] = [action - 0.5 * self.home.t_deadband] * self.home.dt * self.home.sub_subhourly_steps
-
         self.home.get_initial_conditions()
+        if action:
+            if "ev_charge" in self.actions:
+                self.home.override_ev_charge(action.pop()) # overrides the p_ch for the electric vehicle
+            if "wh_setpoint" in self.actions:
+                self.home.override_t_wh(action.pop()) # same but for waterheater
+            if "hvac_setpoint" in self.actions:
+                self.home.override_t_in(action.pop()) # changes thermal deadband to new lower/upper bound
         self.home.solve_type_problem()
         self.home.cleanup_and_finish()
         self.home.redis_write_optimal_vals()
 
         self.home.log.removeHandler(fh)
 
-        if action:
-            print(self.home.timestep)
-            self.home.t_in_max = temp # reset to default values (@akp, clean up)
-
         asyncio.run(self.post_status("updated"))
         asyncio.run(self.await_status("forward"))
+
+        self.demand_profile += [self.home.stored_optimal_vals["p_grid_opt"]]
 
         return self.get_obs(), self.get_reward(), False, {}
 
@@ -178,13 +223,13 @@ class PlayerHome(gym.Env):
         return 
 
 if __name__=="__main__":
+    import random 
     tic = datetime.now()
     my_home = PlayerHome()
-    agent = RandomAgent(my_home)
 
     for _ in range(my_home.num_timesteps * my_home.home.dt):
-        action = my_home.action_space.sample()
-        my_home.step() 
+        action = [random.uniform(16,22), random.uniform(0,5)]
+        my_home.step(action) 
 
     asyncio.run(my_home.post_status("done"))
     toc = datetime.now()
