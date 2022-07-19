@@ -1,17 +1,20 @@
 {"states":{
-	"t_in_current":true,
-	"t_out_current":true,
-	"t_out_6hr":true,
-	"t_our_12hr":false,
-	"h_out":true,
-	"h_out_6hr":true,
-	"h_out_12hr":true,
+	"temp_in_opt":true,
+	"oat_current":true,
+	"oat_future":true,
 	"time_of_day":true,
-	"day_of_week":true,
-	"is_holiday":false,
-	"occupancy":true
-},
+	"leaving_horizon":true,
+	"returning_horizon":true,
+	"occupancy_status":true,
+	"future_waterdraws":true,
+	"e_ev_opt":true,
+	"temp_wh_opt":true,
+	"community_demand":true,
+	"my_demand":true
+	},
 "actions":{
 	"hvac_setpoint":true,
-	"wh_setpoint":false}
+	"wh_setpoint":false,
+	"ev_charge":true
+	}
 }
