@@ -13,7 +13,7 @@
 	"my_demand":true
 	},
 "actions":{
-	"hvac_setpoint":true,
+	"hvac_setpoint":false,
 	"wh_setpoint":false,
 	"ev_charge":true
 	}

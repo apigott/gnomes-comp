@@ -61,8 +61,8 @@ efficiency = [0.15, 0.2]
 
 [home.hems]
 weekday_occ_schedule = [19,8,17,18]
-prediction_horizon = 6
-sub_subhourly_steps = 6
+prediction_horizon = 1
+sub_subhourly_steps = 1
 discount_factor = 0.92
 solver = "GLPK_MI"
 

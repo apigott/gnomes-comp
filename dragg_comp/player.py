@@ -24,7 +24,7 @@ from dragg.mpc_calc import MPCCalc
 from dragg_comp.agent import RandomAgent
 
 # player functions
-# from submission import reward, predict
+# from submission import my_reward#, predict
 
 REDIS_URL = "redis://localhost"
 
@@ -97,8 +97,8 @@ class PlayerHome(gym.Env):
                 obs += [self.home.index_5pm[0] if self.home.index_5pm else -1]
                 self.obs_dict.update({state:self.home.index_5pm[0] if self.home.index_5pm else -1})
             elif state == "occupancy_status":
-                obs += [int(self.home.currently_occupied)]
-                self.obs_dict.update({state:int(self.home.currently_occupied)})
+                obs += [int(self.home.occ_slice[0])]
+                self.obs_dict.update({state:int(self.home.occ_slice[0])})
             elif state == "future_waterdraws":
                 obs += [self.home.draw_frac.value]
                 self.obs_dict.update({state:self.home.draw_frac.value})
@@ -129,8 +129,7 @@ class PlayerHome(gym.Env):
         Determines a reward, function can be redefined by user in any way they would like.
         :return: float value normalized to [-1,1] 
         """
-        reward = self.redis_client.conn.hget("current_values", "current_demand")
-        # reward(self)
+        reward = 0
         return reward
 
     def score(self):
@@ -139,7 +138,6 @@ class PlayerHome(gym.Env):
         :return: dictionary of key performance indexes
         """
         kpis = {"std_demand": np.std(self.demand_profile), "max_demand": np.max(self.demand_profile)}
-        print(kpis)
         return kpis
 
     def step(self, action=None):
@@ -164,6 +162,8 @@ class PlayerHome(gym.Env):
             self.home.redis_get_prev_optimal_vals()
 
         self.home.get_initial_conditions()
+
+        self.home.add_type_constraints()
         if action:
             if "ev_charge" in self.actions:
                 self.home.override_ev_charge(action.pop()) # overrides the p_ch for the electric vehicle
@@ -171,9 +171,12 @@ class PlayerHome(gym.Env):
                 self.home.override_t_wh(action.pop()) # same but for waterheater
             if "hvac_setpoint" in self.actions:
                 self.home.override_t_in(action.pop()) # changes thermal deadband to new lower/upper bound
-        self.home.solve_type_problem()
+        
+        self.home.set_type_p_grid()
+        self.home.solve_mpc(debug=True)
         self.home.cleanup_and_finish()
         self.home.redis_write_optimal_vals()
+        # self.home.run_home()
 
         self.home.log.removeHandler(fh)
 
@@ -228,9 +231,10 @@ if __name__=="__main__":
     my_home = PlayerHome()
 
     for _ in range(my_home.num_timesteps * my_home.home.dt):
-        action = [random.uniform(16,22), random.uniform(0,5)]
+        action = [random.uniform(16,22), random.uniform(0,1)]
         my_home.step(action) 
 
     asyncio.run(my_home.post_status("done"))
+    print(my_home.score())
     toc = datetime.now()
     print(toc-tic)
