@@ -103,6 +103,7 @@ class RLAggregator(Aggregator):
                     if message is not None:
                         # print(f"(Reader) Message Received: {message}")
                         if "initialized player" in message["data"].decode():
+                            print("INITIALIZED PLAYER")
                             i += 1 
                             # pretty sure there's an issue here with the time it takes for a time out/sleep
                             if i < self.config['community']['n_players']:

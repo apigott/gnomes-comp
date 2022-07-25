@@ -23,9 +23,6 @@ from dragg.logger import Logger
 from dragg.mpc_calc import MPCCalc
 from dragg_comp.agent import RandomAgent
 
-# player functions
-# from submission import my_reward#, predict
-
 REDIS_URL = "redis://localhost"
 
 class PlayerHome(gym.Env):
@@ -35,12 +32,24 @@ class PlayerHome(gym.Env):
         home = self.set_home()
         self.home = MPCCalc(home)
         self.name = self.home.name
-        with open('data/rl_data/state_action.json','r') as file:
+        with open('data/state_action.json','r') as file:
             states_actions = json.load(file)
         self.states = [k for k, v in states_actions['states'].items() if v]
         self.observation_space = Box(-1, 1, shape=(len(self.states), ))
         self.actions = [k for k, v in states_actions['actions'].items() if v]
-        self.action_space = Box(-1, 1, shape=(len(self.actions), ))
+        a_min = []
+        a_max = []
+        for action in self.actions:
+            if action == "hvac_setpoint":
+                a_min += [16]
+                a_max += [24]
+            elif action == "wh_setpoint":
+                a_min += [42]
+                a_max += [52]
+            elif action == "ev_charge":
+                a_min += [-1]
+                a_max += [1]
+        self.action_space = Box(np.array(a_min), np.array(a_max))
         asyncio.run(self.post_status("initialized player"))
         asyncio.run(self.await_status("all ready"))
         self.demand_profile = []
@@ -86,7 +95,6 @@ class PlayerHome(gym.Env):
         """
         obs = []
         self.obs_dict = {}
-        print(self.states)
         for state in self.states:
             if state in self.home.optimal_vals.keys():
                 obs += [self.home.optimal_vals[state]]
@@ -118,7 +126,6 @@ class PlayerHome(gym.Env):
                 obs += [community_demand]
                 self.obs_dict.update({state:community_demand})
             elif state == "my_demand":
-                print("HELLO")
                 obs += [self.home.stored_optimal_vals["p_grid_opt"][0]]
                 self.obs_dict.update({state:self.home.stored_optimal_vals["p_grid_opt"][0]})
             else:
