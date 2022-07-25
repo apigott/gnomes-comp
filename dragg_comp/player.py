@@ -86,6 +86,7 @@ class PlayerHome(gym.Env):
         """
         obs = []
         self.obs_dict = {}
+        print(self.states)
         for state in self.states:
             if state in self.home.optimal_vals.keys():
                 obs += [self.home.optimal_vals[state]]
@@ -117,6 +118,7 @@ class PlayerHome(gym.Env):
                 obs += [community_demand]
                 self.obs_dict.update({state:community_demand})
             elif state == "my_demand":
+                print("HELLO")
                 obs += [self.home.stored_optimal_vals["p_grid_opt"][0]]
                 self.obs_dict.update({state:self.home.stored_optimal_vals["p_grid_opt"][0]})
             else:
@@ -164,13 +166,15 @@ class PlayerHome(gym.Env):
         self.home.get_initial_conditions()
 
         self.home.add_type_constraints()
-        if action:
+        if action is not None:
             if "ev_charge" in self.actions:
-                self.home.override_ev_charge(action.pop()) # overrides the p_ch for the electric vehicle
+                self.home.override_ev_charge(action[-1]) # overrides the p_ch for the electric vehicle
+                action = action[:-1]
             if "wh_setpoint" in self.actions:
-                self.home.override_t_wh(action.pop()) # same but for waterheater
+                self.home.override_t_wh(action[-1]) # same but for waterheater
+                action = action[:-1]
             if "hvac_setpoint" in self.actions:
-                self.home.override_t_in(action.pop()) # changes thermal deadband to new lower/upper bound
+                self.home.override_t_in(action[-1]) # changes thermal deadband to new lower/upper bound
         
         self.home.set_type_p_grid()
         self.home.solve_mpc(debug=True)
