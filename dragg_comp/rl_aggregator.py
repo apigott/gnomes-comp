@@ -29,8 +29,8 @@ from dragg.logger import Logger
 REDIS_URL = "redis://localhost"
 
 class RLAggregator(Aggregator):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, start=None, end=None):
+        super().__init__(start, end)
         self.mpc_players = [] # RLAggregator distinguishes between comp controlled (mpc_players) and human players
 
     def get_homes(self):
@@ -194,5 +194,5 @@ class RLAggregator(Aggregator):
         await asyncio.create_task(self.reader(pubsub, redis))
 
 if __name__=="__main__":
-    a = RLAggregator()
+    a = RLAggregator(sys.argv[1], sys.argv[2])
     asyncio.run(a.open_server())

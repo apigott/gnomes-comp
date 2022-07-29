@@ -53,13 +53,23 @@ class PlayerHome(gym.Env):
         asyncio.run(self.post_status("initialized player"))
         asyncio.run(self.await_status("all ready"))
         self.demand_profile = []
+        self.reset(initialize=True)
 
-    def reset(self):
+    def reset(self, initialize=False):
         """
         Reset as required by OpenAI gym. Beta implementation simply returns current observation, 
         meaning that the simulation will overall continue running. 
         :return: state vector of length n
         """
+        if initialize:
+            self.home.redis_get_initial_values()
+            self.home.cast_redis_timestep()
+            self.home.get_initial_conditions()
+            self.home.add_type_constraints()
+            self.home.set_type_p_grid()
+            self.home.solve_mpc(debug=True)
+            self.home.cleanup_and_finish()
+
         obs = self.get_obs()
 
         return obs 
@@ -147,6 +157,10 @@ class PlayerHome(gym.Env):
         :return: dictionary of key performance indexes
         """
         kpis = {"std_demand": np.std(self.demand_profile), "max_demand": np.max(self.demand_profile)}
+
+        with open("score.txt", 'w'):
+            kpis.write(json.dumps(kpis))
+
         return kpis
 
     def step(self, action=None):
