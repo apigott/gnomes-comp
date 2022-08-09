@@ -26,8 +26,9 @@ from dragg_comp.agent import RandomAgent
 REDIS_URL = "redis://localhost"
 
 class PlayerHome(gym.Env):
-    def __init__(self):
+    def __init__(self, redis_url=REDIS_URL):
         self.nstep = 0
+        self.redis_url = redis_url
         asyncio.run(self.await_status("ready"))
         home = self.set_home()
         self.home = MPCCalc(home)
@@ -218,7 +219,7 @@ class PlayerHome(gym.Env):
         Opens and asynchronous reader and awaits the specified status
         :return: None
         """
-        async_redis = aioredis.from_url(REDIS_URL)
+        async_redis = aioredis.from_url(self.redis_url)
         pubsub = async_redis.pubsub()
         await pubsub.subscribe("channel:1", "channel:2")
 
@@ -243,7 +244,7 @@ class PlayerHome(gym.Env):
         Publishes a status (typically "is done" to alert the aggregator)
         :return: None
         """
-        async_redis = aioredis.from_url(REDIS_URL)
+        async_redis = aioredis.from_url(self.redis_url)
         pubsub = async_redis.pubsub()
         await pubsub.subscribe("channel:1")
         print(f"{self.home.name} {status} at t = {self.nstep}.")

@@ -29,7 +29,8 @@ from dragg.logger import Logger
 REDIS_URL = "redis://localhost"
 
 class RLAggregator(Aggregator):
-    def __init__(self, start=None, end=None):
+    def __init__(self, start=None, end=None, redis_url=REDIS_URL):
+        self.redis_url = redis_url
         super().__init__(start, end)
         self.mpc_players = [] # RLAggregator distinguishes between comp controlled (mpc_players) and human players
 
@@ -88,7 +89,7 @@ class RLAggregator(Aggregator):
         Publishes a status (typically "is done" to alert the aggregator)
         :return: None
         """
-        async_redis = aioredis.from_url(REDIS_URL)
+        async_redis = aioredis.from_url(self.redis_url)
         pubsub = async_redis.pubsub()
         await pubsub.subscribe("channel:1")
         await async_redis.publish("channel:1", f"{status}.")
