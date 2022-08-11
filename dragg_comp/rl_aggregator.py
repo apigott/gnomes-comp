@@ -32,7 +32,7 @@ REDIS_URL = "redis://localhost"
 class RLAggregator(Aggregator):
     def __init__(self, start=None, end=None, redis_url=REDIS_URL):
         self.redis_url = redis_url
-        super().__init__(start, end)
+        super().__init__(start, end, redis_url)
         self.mpc_players = [] # RLAggregator distinguishes between comp controlled (mpc_players) and human players
 
     def get_homes(self):
