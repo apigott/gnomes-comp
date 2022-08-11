@@ -23,7 +23,8 @@ from pathos.pools import ProcessPool
 # Local
 from dragg.mpc_calc import MPCCalc, manage_home
 from dragg.aggregator import Aggregator
-from dragg.redis_client import RedisClient
+# from dragg.redis_client import RedisClient
+import dragg.redis_client as rc
 from dragg.logger import Logger
 
 REDIS_URL = "redis://localhost"
@@ -62,17 +63,17 @@ class RLAggregator(Aggregator):
                 print("WARNING: You have initialized more players than are set in the community")
                 # next_home = self.all_homes_copy[0]
 
-            self.redis_client.conn.hset("simulation", "nsteps", self.num_timesteps)
+            self.redis_client.hset("simulation", "nsteps", self.num_timesteps)
             for k, v in next_home.items():
                 if not k in ["wh","hvac","battery","pv","hems"]:
-                    self.redis_client.conn.hset("home_values", k, v)
+                    self.redis_client.hset("home_values", k, v)
                 else:
                     for k2, v2 in v.items():
                         if not k2 in ["draw_sizes", "weekday_occ_schedule"]:
-                            self.redis_client.conn.hset(f"{k}_values", k2, v2)
+                            self.redis_client.hset(f"{k}_values", k2, v2)
                         else:
-                            self.redis_client.conn.delete(k2)
-                            self.redis_client.conn.rpush(k2, *v2)
+                            self.redis_client.delete(k2)
+                            self.redis_client.rpush(k2, *v2)
 
         else:
             print('initializing mpc players')
@@ -186,7 +187,7 @@ class RLAggregator(Aggregator):
         self.reset_collected_data()
         
         print("starting aioredis listener")
-        redis = aioredis.from_url("redis://localhost")
+        redis = aioredis.from_url(self.redis_url)
         pubsub = redis.pubsub()
         await pubsub.subscribe("channel:1", "channel:2")
         await redis.publish("channel:1", "ready")

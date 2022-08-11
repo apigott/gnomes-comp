@@ -18,7 +18,8 @@ import async_timeout
 import gym
 from gym.spaces import Box
 
-from dragg.redis_client import RedisClient
+# from dragg.redis_client import RedisClient
+import dragg.redis_client as rc
 from dragg.logger import Logger
 from dragg.mpc_calc import MPCCalc
 from dragg_comp.agent import RandomAgent
@@ -81,19 +82,20 @@ class PlayerHome(gym.Env):
         :return: MPCCalc object
         :input: None
         """
-        redis_client = RedisClient()
-        self.num_timesteps = int(redis_client.conn.hgetall("simulation")['nsteps'])
-        home = redis_client.conn.hgetall("home_values")
-        home['hvac'] = redis_client.conn.hgetall("hvac_values")
-        home['wh'] = redis_client.conn.hgetall("wh_values")
-        home['hems'] = redis_client.conn.hgetall("hems_values")
+        redis_client = rc.connection(self.redis_url)#RedisClient()
+        print("!!!", redis_client.hgetall("simulation"))
+        self.num_timesteps = int(redis_client.hgetall("simulation")['nsteps'])
+        home = redis_client.hgetall("home_values")
+        home['hvac'] = redis_client.hgetall("hvac_values")
+        home['wh'] = redis_client.hgetall("wh_values")
+        home['hems'] = redis_client.hgetall("hems_values")
         home['hems']["weekday_occ_schedule"] = [[19,8],[17,18]]
         if 'battery' in home['type']:
-            home['battery'] = redis_client.conn.hgetall("battery_values")
+            home['battery'] = redis_client.hgetall("battery_values")
         if 'pv' in home['type']:
-            home['pv'] = redis_client.conn.hgetall("pv_values")
-        home['wh']['draw_sizes'] = [float(i) for i in redis_client.conn.lrange('draw_sizes', 0, -1)]
-        home['hems']['weekday_occ_schedule'] = redis_client.conn.lrange('weekday_occ_schedule', 0, -1)
+            home['pv'] = redis_client.hgetall("pv_values")
+        home['wh']['draw_sizes'] = [float(i) for i in redis_client.lrange('draw_sizes', 0, -1)]
+        home['hems']['weekday_occ_schedule'] = redis_client.lrange('weekday_occ_schedule', 0, -1)
         print(f"Welcome {home['name']}")
 
         return home
@@ -133,7 +135,7 @@ class PlayerHome(gym.Env):
                 obs += [tod]
                 self.obs_dict.update({state:tod})
             elif state == "community_demand":
-                community_demand = self.home.redis_client.conn.hget("current_values", "current_demand")
+                community_demand = self.home.redis_client.hget("current_values", "current_demand")
                 obs += [community_demand]
                 self.obs_dict.update({state:community_demand})
             elif state == "my_demand":
@@ -178,7 +180,7 @@ class PlayerHome(gym.Env):
 
         self.home.log = pathos.logger(level=logging.INFO, handler=fh, name=self.name)
 
-        self.redis_client = RedisClient()
+        self.redis_client = rc.connection(self.redis_url)#RedisClient()
         self.home.redis_get_initial_values()
         self.home.cast_redis_timestep()
 
