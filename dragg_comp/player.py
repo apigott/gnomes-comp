@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from copy import deepcopy
 import numpy as np
+import pandas as pd
 
 # redis with asyncronous implementation
 from redis import StrictRedis
@@ -83,7 +84,6 @@ class PlayerHome(gym.Env):
         :input: None
         """
         redis_client = rc.connection(self.redis_url)#RedisClient()
-        print("!!!", redis_client.hgetall("simulation"))
         self.num_timesteps = int(redis_client.hgetall("simulation")['nsteps'])
         home = redis_client.hgetall("home_values")
         home['hvac'] = redis_client.hgetall("hvac_values")
@@ -159,10 +159,12 @@ class PlayerHome(gym.Env):
         Calculates a score for the player in the game.
         :return: dictionary of key performance indexes
         """
-        kpis = {"std_demand": np.std(self.demand_profile), "max_demand": np.max(self.demand_profile)}
+        kpis = {"std_demand": [np.std(self.demand_profile)], "max_demand": [np.max(self.demand_profile)]}
 
-        with open("score.txt", 'w'):
-            kpis.write(json.dumps(kpis))
+        kpis_df = pd.DataFrame(kpis)
+        kpis_df.to_csv("outputs/score.csv")
+        # with open("score.txt", 'w'):
+        #     kpis.write(json.dumps(kpis))
 
         return kpis
 
