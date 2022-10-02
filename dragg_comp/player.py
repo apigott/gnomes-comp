@@ -28,31 +28,36 @@ from dragg_comp.agent import RandomAgent
 REDIS_URL = "redis://localhost"
 
 class PlayerHome(gym.Env):
-    def __init__(self, redis_url=REDIS_URL):
+    def __init__(self, redis_url=REDIS_URL, home_dict=None):
+        """
+        PlayerHome should be initialized with a REDIS_URL. Initialization with home_dict
+        as an explicit input should be reserved for unit testing of player submissions.
+        """
         self.nstep = 0
         self.redis_url = redis_url
         asyncio.run(self.await_status("ready"))
-        home = self.set_home()
-        self.home = MPCCalc(home)
+        if redis_url:
+            home_dict = self.get_home_redis()
+        self.home = MPCCalc(home_dict)
         self.name = self.home.name
         with open('data/state_action.json','r') as file:
             states_actions = json.load(file)
         self.states = [k for k, v in states_actions['states'].items() if v]
         self.observation_space = Box(-1, 1, shape=(len(self.states), ))
         self.actions = [k for k, v in states_actions['actions'].items() if v]
-        a_min = []
-        a_max = []
-        for action in self.actions:
-            if action == "hvac_setpoint":
-                a_min += [16]
-                a_max += [24]
-            elif action == "wh_setpoint":
-                a_min += [42]
-                a_max += [52]
-            elif action == "ev_charge":
-                a_min += [-1]
-                a_max += [1]
-        self.action_space = Box(np.array(a_min), np.array(a_max))
+        # a_min = []
+        # a_max = []
+        # for action in self.actions:
+        #     if action == "hvac_setpoint":
+        #         a_min += [16]
+        #         a_max += [24]
+        #     elif action == "wh_setpoint":
+        #         a_min += [42]
+        #         a_max += [52]
+        #     elif action == "ev_charge":
+        #         a_min += [-1]
+        #         a_max += [1]
+        self.action_space = Box(-1*np.ones(len(self.actions)), np.ones(len(self.actions)))
         asyncio.run(self.post_status("initialized player"))
         asyncio.run(self.await_status("all ready"))
         self.demand_profile = []
@@ -77,7 +82,7 @@ class PlayerHome(gym.Env):
 
         return obs 
 
-    def set_home(self):
+    def get_home_redis(self):
         """
         Gets the first home in the queue (broadcast by the Aggregator).
         :return: MPCCalc object
@@ -97,7 +102,6 @@ class PlayerHome(gym.Env):
         home['wh']['draw_sizes'] = [float(i) for i in redis_client.lrange('draw_sizes', 0, -1)]
         home['hems']['weekday_occ_schedule'] = redis_client.lrange('weekday_occ_schedule', 0, -1)
         print(f"Welcome {home['name']}")
-
         return home
 
     def get_obs(self):
@@ -197,10 +201,12 @@ class PlayerHome(gym.Env):
                 self.home.override_ev_charge(action[-1]) # overrides the p_ch for the electric vehicle
                 action = action[:-1]
             if "wh_setpoint" in self.actions:
-                self.home.override_t_wh(action[-1]) # same but for waterheater
+                wh_action = self.wh_min + action[-1] * (self.wh_max - self.wh_min)
+                self.home.override_t_wh(wh_action) # same but for waterheater
                 action = action[:-1]
             if "hvac_setpoint" in self.actions:
-                self.home.override_t_in(action[-1]) # changes thermal deadband to new lower/upper bound
+                hvac_action = self.hvac_min + action[-1] * (self.hvac_max - self.hvac_min)
+                self.home.override_t_in(hvac_action) # changes thermal deadband to new lower/upper bound
         
         self.home.set_type_p_grid()
         self.home.solve_mpc(debug=True)
@@ -261,7 +267,7 @@ if __name__=="__main__":
     my_home = PlayerHome()
 
     for _ in range(my_home.num_timesteps * my_home.home.dt):
-        action = [random.uniform(16,22), random.uniform(0,1)]
+        action = my_home.action_space.sample()
         my_home.step(action) 
 
     asyncio.run(my_home.post_status("done"))
