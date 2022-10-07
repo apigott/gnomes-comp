@@ -73,8 +73,8 @@ class PlayerHome(gym.Env):
             self.home.redis_get_initial_values()
             self.home.cast_redis_timestep()
             self.home.get_initial_conditions()
-            self.home.add_type_constraints()
-            self.home.set_type_p_grid()
+            self.home.add_base_constraints()
+            self.home.set_p_grid()
             self.home.solve_mpc(debug=True)
             self.home.cleanup_and_finish()
 
@@ -117,17 +117,17 @@ class PlayerHome(gym.Env):
                 obs += [self.home.optimal_vals[state]]
                 self.obs_dict.update({state:self.home.optimal_vals[state]})
             elif state == "leaving_horizon":
-                obs += [self.home.index_8am[0] if self.home.index_8am else -1]
-                self.obs_dict.update({state:self.home.index_8am[0] if self.home.index_8am else -1})
+                obs += [self.home.ev.index_8am[0] if self.home.ev.index_8am else -1]
+                self.obs_dict.update({state:self.home.ev.index_8am[0] if self.home.ev.index_8am else -1})
             elif state == "returning_horizon":
-                obs += [self.home.index_5pm[0] if self.home.index_5pm else -1]
-                self.obs_dict.update({state:self.home.index_5pm[0] if self.home.index_5pm else -1})
+                obs += [self.home.ev.index_5pm[0] if self.home.ev.index_5pm else -1]
+                self.obs_dict.update({state:self.home.ev.index_5pm[0] if self.home.ev.index_5pm else -1})
             elif state == "occupancy_status":
-                obs += [int(self.home.occ_slice[0])]
-                self.obs_dict.update({state:int(self.home.occ_slice[0])})
+                obs += [int(self.home.ev.occ_slice[0])]
+                self.obs_dict.update({state:int(self.home.ev.occ_slice[0])})
             elif state == "future_waterdraws":
-                obs += [self.home.draw_frac.value]
-                self.obs_dict.update({state:self.home.draw_frac.value})
+                obs += [self.home.wh.draw_frac.value]
+                self.obs_dict.update({state:self.home.wh.draw_frac.value})
             elif state == "oat_future":
                 obs += [self.home.oat_current[-1]]
                 self.obs_dict.update({state:self.home.oat_current[-1]})
@@ -195,20 +195,20 @@ class PlayerHome(gym.Env):
 
         self.home.get_initial_conditions()
 
-        self.home.add_type_constraints()
+        self.home.add_base_constraints()
         if action is not None:
             if "ev_charge" in self.actions:
-                self.home.override_ev_charge(action[-1]) # overrides the p_ch for the electric vehicle
+                self.home.ev.override_charge(action[-1]) # overrides the p_ch for the electric vehicle
                 action = action[:-1]
             if "wh_setpoint" in self.actions:
-                wh_action = self.wh_min + action[-1] * (self.wh_max - self.wh_min)
-                self.home.override_t_wh(wh_action) # same but for waterheater
+                # wh_action = self.wh_min + action[-1] * (self.wh_max - self.wh_min)
+                self.home.wh.override_p_wh(action[-1]) # same but for waterheater
                 action = action[:-1]
             if "hvac_setpoint" in self.actions:
-                hvac_action = self.hvac_min + action[-1] * (self.hvac_max - self.hvac_min)
-                self.home.override_t_in(hvac_action) # changes thermal deadband to new lower/upper bound
+                # hvac_action = self.hvac_min + action[-1] * (self.hvac_max - self.hvac_min)
+                self.home.hvac.override_t_in(action[-1]) # changes thermal deadband to new lower/upper bound
         
-        self.home.set_type_p_grid()
+        self.home.set_p_grid()
         self.home.solve_mpc(debug=True)
         self.home.cleanup_and_finish()
         self.home.redis_write_optimal_vals()
