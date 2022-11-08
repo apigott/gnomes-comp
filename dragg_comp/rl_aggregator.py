@@ -156,8 +156,13 @@ class RLAggregator(Aggregator):
                             self.write_outputs()
                             return # fix this break
 
+                        elif "reset" in message["data"].decode():
+                            self.timestep = 0
+                            self.next_ts = 1
+
                     await asyncio.sleep(0.1)
             except asyncio.TimeoutError:
+                print("TIMEOUT")
                 pass
 
         return

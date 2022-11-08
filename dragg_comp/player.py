@@ -45,18 +45,6 @@ class PlayerHome(gym.Env):
         self.states = [k for k, v in states_actions['states'].items() if v]
         self.observation_space = Box(-1, 1, shape=(len(self.states), ))
         self.actions = [k for k, v in states_actions['actions'].items() if v]
-        # a_min = []
-        # a_max = []
-        # for action in self.actions:
-        #     if action == "hvac_setpoint":
-        #         a_min += [16]
-        #         a_max += [24]
-        #     elif action == "wh_setpoint":
-        #         a_min += [42]
-        #         a_max += [52]
-        #     elif action == "ev_charge":
-        #         a_min += [-1]
-        #         a_max += [1]
         self.action_space = Box(-1*np.ones(len(self.actions)), np.ones(len(self.actions)))
         asyncio.run(self.post_status("initialized player"))
         asyncio.run(self.await_status("all ready"))
@@ -69,6 +57,9 @@ class PlayerHome(gym.Env):
         meaning that the simulation will overall continue running. 
         :return: state vector of length n
         """
+        asyncio.run(self.post_status("reset"))
+        self.nstep = 0
+
         if initialize:
             self.home.redis_get_initial_values()
             self.home.cast_redis_timestep()
@@ -126,13 +117,13 @@ class PlayerHome(gym.Env):
                 obs += [int(self.home.ev.occ_slice[0])]
                 self.obs_dict.update({state:int(self.home.ev.occ_slice[0])})
             elif state == "future_waterdraws":
-                obs += [self.home.wh.draw_frac.value]
+                obs += [np.sum(self.home.wh.draw_frac.value)]
                 self.obs_dict.update({state:self.home.wh.draw_frac.value})
             elif state == "oat_future":
-                obs += [self.home.oat_current[-1]]
+                obs += [self.home.oat_current.value[-1]]
                 self.obs_dict.update({state:self.home.oat_current[-1]})
             elif state == "oat_current":
-                obs += [self.home.oat_current[0]]
+                obs += [self.home.oat_current.value[0]]
                 self.obs_dict.update({state:self.home.oat_current[-1]})
             elif state == "time_of_day":
                 tod = self.home.timestep % (24 * self.home.dt)
@@ -140,6 +131,8 @@ class PlayerHome(gym.Env):
                 self.obs_dict.update({state:tod})
             elif state == "community_demand":
                 community_demand = self.home.redis_client.hget("current_values", "current_demand")
+                if not community_demand:
+                    community_demand = 0
                 obs += [community_demand]
                 self.obs_dict.update({state:community_demand})
             elif state == "my_demand":
@@ -147,7 +140,6 @@ class PlayerHome(gym.Env):
                 self.obs_dict.update({state:self.home.stored_optimal_vals["p_grid_opt"][0]})
             else:
                 print(f"MISSING {state}")
-
         return obs
 
     def get_reward(self):
@@ -266,7 +258,7 @@ if __name__=="__main__":
     tic = datetime.now()
     my_home = PlayerHome()
 
-    for _ in range(my_home.num_timesteps * my_home.home.dt):
+    for _ in range(my_home.num_timesteps):
         action = my_home.action_space.sample()
         my_home.step(action) 
 
