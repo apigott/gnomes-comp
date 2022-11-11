@@ -51,6 +51,10 @@ class PlayerHome(gym.Env):
         self.demand_profile = []
         self.reset(initialize=True)
 
+    def update_states(self, obs_dict):
+        self.states = [k for k, v in obs_dict.items() if v]
+        self.observation_space = Box(-1, 1, shape=(len(self.states), ))
+
     def reset(self, initialize=False):
         """
         Reset as required by OpenAI gym. Beta implementation simply returns current observation, 
@@ -103,43 +107,68 @@ class PlayerHome(gym.Env):
         """
         obs = []
         self.obs_dict = {}
+        # all_states = [
+        #     "leaving_horizon",
+        #     "returning_horizon",
+        #     "occupancy_status",
+        #     "waterdraws",
+        #     "t_out_current",
+        #     "t_in_current",
+        #     "t_out_6hr",
+        #     "t_out_12hr",
+        #     "oat_current"
+        #     "time_of_day",
+        #     "p_grid_opt"
+        #     ]
+        # obs = [self.home.optimal_vals[s] for s in all_states if s in self.states]
+        # self.obs_dict = {s:self.home.optimal_vals[s] for s in all_states}
         for state in self.states:
+            skip = False
             if state in self.home.optimal_vals.keys():
                 obs += [self.home.optimal_vals[state]]
-                self.obs_dict.update({state:self.home.optimal_vals[state]})
             elif state == "leaving_horizon":
-                obs += [self.home.ev.index_8am[0] if self.home.ev.index_8am else -1]
-                self.obs_dict.update({state:self.home.ev.index_8am[0] if self.home.ev.index_8am else -1})
+                obs += [self.home.optimal_vals[state]]
             elif state == "returning_horizon":
                 obs += [self.home.ev.index_5pm[0] if self.home.ev.index_5pm else -1]
-                self.obs_dict.update({state:self.home.ev.index_5pm[0] if self.home.ev.index_5pm else -1})
             elif state == "occupancy_status":
-                obs += [int(self.home.ev.occ_slice[0])]
-                self.obs_dict.update({state:int(self.home.ev.occ_slice[0])})
+                obs += [int(self.home.occ_on[0])]
             elif state == "future_waterdraws":
-                obs += [np.sum(self.home.wh.draw_frac.value)]
-                self.obs_dict.update({state:self.home.wh.draw_frac.value})
-            elif state == "oat_future":
-                obs += [self.home.oat_current.value[-1]]
-                self.obs_dict.update({state:self.home.oat_current[-1]})
-            elif state == "oat_current":
-                obs += [self.home.oat_current.value[0]]
-                self.obs_dict.update({state:self.home.oat_current[-1]})
+                obs += [np.sum(self.home.stored_optimal_vals["waterdraws"]) / self.wh.wh_size]
+            elif state == "t_out":
+                obs += [(self.home.all_oat[self.home.start_slice] - np.min(self.home.all_oat)) / (np.max(self.home.all_oat) - np.min(self.home.all_oat))]
+            elif state == "t_out_6hr":
+                obs += [(self.home.all_oat[self.home.start_slice + 6*self.home.dt] - np.min(self.home.all_oat)) / (np.max(self.home.all_oat) - np.min(self.home.all_oat))]
+            elif state == "t_out_12hr":
+                obs += [(self.home.all_oat[self.home.start_slice + 12*self.home.dt] - np.min(self.home.all_oat)) / (np.max(self.home.all_oat) - np.min(self.home.all_oat))]
+            elif state == "ghi":
+                obs += [self.home.all_ghi[self.home.start_slice] / np.max(self.home.all_ghi)]
+            elif state == "ghi_6hr":
+                obs += [self.home.all_ghi[self.home.start_slice + 6*self.home.dt] / np.max(self.home.all_ghi)]
+            elif state == "ghi_12hr":
+                obs += [self.home.all_ghi[self.home.start_slice + 12*self.home.dt] / np.max(self.home.all_ghi)]
+            elif state == "t_in":
+                obs += [(self.home.optimal_vals["temp_in_opt"] - self.home.hvac.t_in_min_current.value[0]) / (self.home.hvac.t_in_max_current.value[0] - self.home.hvac.t_in_min_current.value[0])]
+            elif state == "t_wh":
+                obs += [(self.home.optimal_vals["temp_wh_opt"] - self.home.wh.temp_wh_min.value )/(self.home.wh.temp_wh_max.value - self.home.wh.temp_wh_min.value)]
+            elif state == "e_ev":
+                obs += [self.home.optimal_vals["e_ev_opt"]]
             elif state == "time_of_day":
-                tod = self.home.timestep % (24 * self.home.dt)
+                tod = self.home.timestep % (24 * self.home.dt) / 24
                 obs += [tod]
-                self.obs_dict.update({state:tod})
             elif state == "community_demand":
                 community_demand = self.home.redis_client.hget("current_values", "current_demand")
                 if not community_demand:
                     community_demand = 0
-                obs += [community_demand]
-                self.obs_dict.update({state:community_demand})
+                obs += [community_demand / (self.home.max_load / 5) - 1]
             elif state == "my_demand":
-                obs += [self.home.stored_optimal_vals["p_grid_opt"][0]]
-                self.obs_dict.update({state:self.home.stored_optimal_vals["p_grid_opt"][0]})
+                obs += [2 * self.home.stored_optimal_vals["p_grid_opt"][0] / self.home.max_load - 1]
             else:
+                skip = True
                 print(f"MISSING {state}")
+
+            if not skip:
+                self.obs_dict.update({state:obs[-1]})
+
         return obs
 
     def get_reward(self):
