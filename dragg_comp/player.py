@@ -33,6 +33,7 @@ class PlayerHome(gym.Env):
         PlayerHome should be initialized with a REDIS_URL. Initialization with home_dict
         as an explicit input should be reserved for unit testing of player submissions.
         """
+        self.log = Logger("player")
         self.nstep = 0
         self.redis_url = redis_url
         asyncio.run(self.await_status("ready"))
@@ -61,6 +62,7 @@ class PlayerHome(gym.Env):
         meaning that the simulation will overall continue running. 
         :return: state vector of length n
         """
+        self.log.logger.info("Resetting the player's environment.")
         asyncio.run(self.post_status("reset"))
         self.nstep = 0
 
@@ -96,7 +98,7 @@ class PlayerHome(gym.Env):
             home['pv'] = redis_client.hgetall("pv_values")
         home['wh']['draw_sizes'] = [float(i) for i in redis_client.lrange('draw_sizes', 0, -1)]
         home['hems']['weekday_occ_schedule'] = redis_client.lrange('weekday_occ_schedule', 0, -1)
-        print(f"Welcome {home['name']}")
+        self.log.logger.info(f"Welcome {home['name']}")
         return home
 
     def get_obs(self):
@@ -107,21 +109,6 @@ class PlayerHome(gym.Env):
         """
         obs = []
         self.obs_dict = {}
-        # all_states = [
-        #     "leaving_horizon",
-        #     "returning_horizon",
-        #     "occupancy_status",
-        #     "waterdraws",
-        #     "t_out_current",
-        #     "t_in_current",
-        #     "t_out_6hr",
-        #     "t_out_12hr",
-        #     "oat_current"
-        #     "time_of_day",
-        #     "p_grid_opt"
-        #     ]
-        # obs = [self.home.optimal_vals[s] for s in all_states if s in self.states]
-        # self.obs_dict = {s:self.home.optimal_vals[s] for s in all_states}
         for state in self.states:
             skip = False
             if state in self.home.optimal_vals.keys():
@@ -133,7 +120,7 @@ class PlayerHome(gym.Env):
             elif state == "occupancy_status":
                 obs += [int(self.home.occ_on[0])]
             elif state == "future_waterdraws":
-                obs += [np.sum(self.home.stored_optimal_vals["waterdraws"]) / self.wh.wh_size]
+                obs += [np.sum(self.home.stored_optimal_vals["waterdraws"]) / self.home.wh.wh_size]
             elif state == "t_out":
                 obs += [(self.home.all_oat[self.home.start_slice] - np.min(self.home.all_oat)) / (np.max(self.home.all_oat) - np.min(self.home.all_oat))]
             elif state == "t_out_6hr":
@@ -164,7 +151,7 @@ class PlayerHome(gym.Env):
                 obs += [2 * self.home.stored_optimal_vals["p_grid_opt"][0] / self.home.max_load - 1]
             else:
                 skip = True
-                print(f"MISSING {state}")
+                self.log.logger.warn(f"MISSING {state}")
 
             if not skip:
                 self.obs_dict.update({state:obs[-1]})
@@ -188,8 +175,6 @@ class PlayerHome(gym.Env):
 
         kpis_df = pd.DataFrame(kpis)
         kpis_df.to_csv("outputs/score.csv")
-        # with open("score.txt", 'w'):
-        #     kpis.write(json.dumps(kpis))
 
         return kpis
 
@@ -233,7 +218,6 @@ class PlayerHome(gym.Env):
         self.home.solve_mpc(debug=True)
         self.home.cleanup_and_finish()
         self.home.redis_write_optimal_vals()
-        # self.home.run_home()
 
         self.home.log.removeHandler(fh)
 
@@ -257,10 +241,10 @@ class PlayerHome(gym.Env):
         i = 0
         while True:
             try:
-                async with async_timeout.timeout(1):
+                async with async_timeout.timeout(0.1):
                     message = await pubsub.get_message(ignore_subscribe_messages=True)
                     if message is not None:
-                        print(f"(Reader) Message Received: {message}")
+                        self.log.logger.debug(f"(Reader) Message Received: {message['data'].decode()}")
                         if status in message["data"].decode():
                             break
                         else:
@@ -278,7 +262,7 @@ class PlayerHome(gym.Env):
         async_redis = aioredis.from_url(self.redis_url)
         pubsub = async_redis.pubsub()
         await pubsub.subscribe("channel:1")
-        print(f"{self.home.name} {status} at t = {self.nstep}.")
+        self.log.logger.info(f"{self.home.name} {status} at t = {self.nstep}.")
         await async_redis.publish("channel:1", f"{self.home.name} {status} at t = {self.nstep}.")
         return 
 

@@ -61,8 +61,7 @@ class RLAggregator(Aggregator):
             if len(self.all_homes_copy) > 0:
                 next_home = self.all_homes_copy.pop()
             else:
-                print("WARNING: You have initialized more players than are set in the community")
-                # next_home = self.all_homes_copy[0]
+                self.log.logger.warn("You have initialized more players than are set in the community")
 
             self.redis_client.hset("simulation", "nsteps", self.num_timesteps)
             for k, v in next_home.items():
@@ -77,10 +76,9 @@ class RLAggregator(Aggregator):
                             self.redis_client.rpush(k2, *v2)
 
         else:
-            print('initializing mpc players')
             for next_home in self.all_homes_copy:
                 self.mpc_players += [MPCCalc(next_home)]
-                print(f"Aggregator initialized {self.mpc_players[-1].name}")
+                self.log.logger.info(f"Aggregator initialized MPC player {self.mpc_players[-1].name}")
             
 
         return 
@@ -104,11 +102,9 @@ class RLAggregator(Aggregator):
                 async with async_timeout.timeout(1):
                     message = await channel.get_message(ignore_subscribe_messages=True)
                     if message is not None:
-                        # print(f"(Reader) Message Received: {message}")
                         if "initialized player" in message["data"].decode():
-                            print("INITIALIZED PLAYER")
+                            self.log.logger.debug("Initialized a new player")
                             i += 1 
-                            # pretty sure there's an issue here with the time it takes for a time out/sleep
                             if i < self.config['community']['n_players']:
                                 self.post_next_home()
                                 i += 1
@@ -131,7 +127,7 @@ class RLAggregator(Aggregator):
         :return None:
         """
 
-        i = 0
+        i = 1
         self.next_ts = 1
         while True:
             try:
@@ -140,8 +136,7 @@ class RLAggregator(Aggregator):
                     if message is not None:
                         if str(self.next_ts) in message["data"].decode():
                             if "updated" in message["data"].decode():
-                                print(f"(Reader) rl house {i} updated")
-                                i += 1
+                                self.log.logger.info(f"Player {i}/{self.config['community']['n_players']} updated demand at t={self.next_ts}.")
                                 if i == self.config['community']['n_players']: # now we know that the whole community has stepped
                                     self.redis_set_current_values()
                                     self.run_iteration()
@@ -150,7 +145,7 @@ class RLAggregator(Aggregator):
 
                                     i = 0
                                     self.next_ts += 1
-                                    print("(Reader) timestep can be moved forward")
+                                i += 1
 
                         elif "done" in message["data"].decode():
                             self.write_outputs()
@@ -162,7 +157,7 @@ class RLAggregator(Aggregator):
 
                     await asyncio.sleep(0.1)
             except asyncio.TimeoutError:
-                print("TIMEOUT")
+                self.log.logger.error("TIMEOUT (No update from MPC players.)")
                 pass
 
         return
@@ -192,7 +187,8 @@ class RLAggregator(Aggregator):
         self.post_next_home()
         self.reset_collected_data()
         
-        print("starting aioredis listener")
+        # print("starting aioredis listener")
+        self.log.logger.info("Starting aioredis listener...")
         redis = aioredis.from_url(self.redis_url)
         pubsub = redis.pubsub()
         await pubsub.subscribe("channel:1", "channel:2")
