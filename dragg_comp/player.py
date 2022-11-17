@@ -25,6 +25,10 @@ from dragg.logger import Logger
 from dragg.mpc_calc import MPCCalc
 from dragg_comp.agent import RandomAgent
 
+import selectors
+
+
+
 REDIS_URL = "redis://localhost"
 
 class PlayerHome(gym.Env):
@@ -47,8 +51,21 @@ class PlayerHome(gym.Env):
         self.observation_space = Box(-1, 1, shape=(len(self.states), ))
         self.actions = [k for k, v in states_actions['actions'].items() if v]
         self.action_space = Box(-1*np.ones(len(self.actions)), np.ones(len(self.actions)))
-        asyncio.run(self.post_status("initialized player"))
-        asyncio.run(self.await_status("all ready"))
+        # print("INITIALIZING PLAYER")
+        # asyncio.run(self.post_status("initialized player"))
+        # print("ALL READY")
+        # loop = asyncio.new_event_loop()
+        # # asyncio.set_event_loop(asyncio.new_event_loop())
+        # asyncio.run(self.await_status("all ready"))
+        selector = selectors.SelectSelector()
+        loop = asyncio.SelectorEventLoop(selector)
+        asyncio.set_event_loop(loop)
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.post_status("initialized player"))
+        loop.run_until_complete(self.await_status("all ready"))
+        loop.close()
+
+
         self.demand_profile = []
         self.reset(initialize=True)
 
@@ -62,6 +79,7 @@ class PlayerHome(gym.Env):
         meaning that the simulation will overall continue running. 
         :return: state vector of length n
         """
+        print("resetting")
         self.log.logger.info("Resetting the player's environment.")
         asyncio.run(self.post_status("reset"))
         self.nstep = 0
@@ -241,7 +259,7 @@ class PlayerHome(gym.Env):
         i = 0
         while True:
             try:
-                async with async_timeout.timeout(0.1):
+                async with async_timeout.timeout(1):
                     message = await pubsub.get_message(ignore_subscribe_messages=True)
                     if message is not None:
                         self.log.logger.debug(f"(Reader) Message Received: {message['data'].decode()}")

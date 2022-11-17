@@ -79,7 +79,6 @@ class RLAggregator(Aggregator):
             for next_home in self.all_homes_copy:
                 self.mpc_players += [MPCCalc(next_home)]
                 self.log.logger.info(f"Aggregator initialized MPC player {self.mpc_players[-1].name}")
-            
 
         return 
 
