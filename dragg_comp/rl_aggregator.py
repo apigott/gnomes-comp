@@ -186,7 +186,6 @@ class RLAggregator(Aggregator):
         self.post_next_home()
         self.reset_collected_data()
         
-        # print("starting aioredis listener")
         self.log.logger.info("Starting aioredis listener...")
         redis = aioredis.from_url(self.redis_url)
         pubsub = redis.pubsub()

@@ -51,12 +51,6 @@ class PlayerHome(gym.Env):
         self.observation_space = Box(-1, 1, shape=(len(self.states), ))
         self.actions = [k for k, v in states_actions['actions'].items() if v]
         self.action_space = Box(-1*np.ones(len(self.actions)), np.ones(len(self.actions)))
-        # print("INITIALIZING PLAYER")
-        # asyncio.run(self.post_status("initialized player"))
-        # print("ALL READY")
-        # loop = asyncio.new_event_loop()
-        # # asyncio.set_event_loop(asyncio.new_event_loop())
-        # asyncio.run(self.await_status("all ready"))
         selector = selectors.SelectSelector()
         loop = asyncio.SelectorEventLoop(selector)
         asyncio.set_event_loop(loop)
@@ -64,8 +58,6 @@ class PlayerHome(gym.Env):
         loop.run_until_complete(self.post_status("initialized player"))
         loop.run_until_complete(self.await_status("all ready"))
         loop.close()
-
-
         self.demand_profile = []
         self.reset(initialize=True)
 
@@ -79,7 +71,6 @@ class PlayerHome(gym.Env):
         meaning that the simulation will overall continue running. 
         :return: state vector of length n
         """
-        print("resetting")
         self.log.logger.info("Resetting the player's environment.")
         asyncio.run(self.post_status("reset"))
         self.nstep = 0
@@ -138,7 +129,7 @@ class PlayerHome(gym.Env):
             elif state == "occupancy_status":
                 obs += [int(self.home.occ_on[0])]
             elif state == "future_waterdraws":
-                obs += [np.sum(self.home.stored_optimal_vals["waterdraws"]) / self.home.wh.wh_size]
+                obs += [np.sum(self.home.optimal_vals["waterdraws"]) / self.home.wh.wh_size]
             elif state == "t_out":
                 obs += [(self.home.all_oat[self.home.start_slice] - np.min(self.home.all_oat)) / (np.max(self.home.all_oat) - np.min(self.home.all_oat))]
             elif state == "t_out_6hr":
@@ -166,7 +157,7 @@ class PlayerHome(gym.Env):
                     community_demand = 0
                 obs += [community_demand / (self.home.max_load / 5) - 1]
             elif state == "my_demand":
-                obs += [2 * self.home.stored_optimal_vals["p_grid_opt"][0] / self.home.max_load - 1]
+                obs += [2 * self.home.optimal_vals["p_grid_opt"] / self.home.max_load - 1]
             else:
                 skip = True
                 self.log.logger.warn(f"MISSING {state}")
