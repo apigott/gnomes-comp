@@ -180,6 +180,7 @@ class PlayerHome(gym.Env):
         Calculates a score for the player in the game.
         :return: dictionary of key performance indexes
         """
+        print(self.demand_profile)
         kpis = {"std_demand": [np.std(self.demand_profile)], "max_demand": [np.max(self.demand_profile)]}
 
         kpis_df = pd.DataFrame(kpis)
@@ -201,7 +202,7 @@ class PlayerHome(gym.Env):
 
         self.home.log = pathos.logger(level=logging.INFO, handler=fh, name=self.name)
 
-        self.redis_client = rc.connection(self.redis_url)#RedisClient()
+        self.redis_client = rc.connection(self.redis_url)
         self.home.redis_get_initial_values()
         self.home.cast_redis_timestep()
 
@@ -209,20 +210,16 @@ class PlayerHome(gym.Env):
             self.home.redis_get_prev_optimal_vals()
 
         self.home.get_initial_conditions()
-
         self.home.add_base_constraints()
         if action is not None:
-            if "ev_charge" in self.actions:
+            if "ev_charge" in self.actions and "ev" in self.home.devices:
                 self.home.ev.override_charge(action[-1]) # overrides the p_ch for the electric vehicle
                 action = action[:-1]
-            if "wh_setpoint" in self.actions:
-                # wh_action = self.wh_min + action[-1] * (self.wh_max - self.wh_min)
+            if "wh_setpoint" in self.actions and "wh" in self.home.devices:
                 self.home.wh.override_p_wh(action[-1]) # same but for waterheater
                 action = action[:-1]
-            if "hvac_setpoint" in self.actions:
-                # hvac_action = self.hvac_min + action[-1] * (self.hvac_max - self.hvac_min)
+            if "hvac_setpoint" in self.actions and "hvac" in self.home.devices:
                 self.home.hvac.override_t_in(action[-1]) # changes thermal deadband to new lower/upper bound
-        
         self.home.set_p_grid()
         self.home.solve_mpc(debug=True)
         self.home.cleanup_and_finish()
@@ -233,7 +230,7 @@ class PlayerHome(gym.Env):
         asyncio.run(self.post_status("updated"))
         asyncio.run(self.await_status("forward"))
 
-        self.demand_profile += [self.home.stored_optimal_vals["p_grid_opt"]]
+        self.demand_profile += [self.home.optimal_vals["p_grid_opt"]]
 
         return self.get_obs(), self.get_reward(), False, {}
 
