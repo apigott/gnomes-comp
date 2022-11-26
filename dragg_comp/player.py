@@ -122,30 +122,30 @@ class PlayerHome(gym.Env):
             skip = False
             if state in self.home.optimal_vals.keys():
                 obs += [self.home.optimal_vals[state]]
-            elif state == "leaving_horizon":
-                obs += [self.home.optimal_vals[state]]
-            elif state == "returning_horizon":
-                obs += [self.home.ev.index_5pm[0] if self.home.ev.index_5pm else -1]
+            # elif state == "leaving_horizon":
+                # obs += [self.home.ev.index_8am[0] if self.home.ev.index_8am else -1]
+            # elif state == "returning_horizon":
+                # obs += [self.home.ev.index_5pm[0] if self.home.ev.index_5pm else -1]
             elif state == "occupancy_status":
                 obs += [int(self.home.occ_on[0])]
             elif state == "future_waterdraws":
-                obs += [np.sum(self.home.optimal_vals["waterdraws"]) / self.home.wh.wh_size]
+                obs += [np.sum(self.home.optimal_vals["waterdraws"])]
             elif state == "t_out":
-                obs += [(self.home.all_oat[self.home.start_slice] - np.min(self.home.all_oat)) / (np.max(self.home.all_oat) - np.min(self.home.all_oat))]
+                obs += [self.home.all_oat[self.home.start_slice]]
             elif state == "t_out_6hr":
-                obs += [(self.home.all_oat[self.home.start_slice + 6*self.home.dt] - np.min(self.home.all_oat)) / (np.max(self.home.all_oat) - np.min(self.home.all_oat))]
+                obs += [self.home.all_oat[self.home.start_slice + 6*self.home.dt]]
             elif state == "t_out_12hr":
-                obs += [(self.home.all_oat[self.home.start_slice + 12*self.home.dt] - np.min(self.home.all_oat)) / (np.max(self.home.all_oat) - np.min(self.home.all_oat))]
+                obs += [self.home.all_oat[self.home.start_slice + 12*self.home.dt]]
             elif state == "ghi":
-                obs += [self.home.all_ghi[self.home.start_slice] / np.max(self.home.all_ghi)]
+                obs += [self.home.all_ghi[self.home.start_slice]]
             elif state == "ghi_6hr":
-                obs += [self.home.all_ghi[self.home.start_slice + 6*self.home.dt] / np.max(self.home.all_ghi)]
+                obs += [self.home.all_ghi[self.home.start_slice + 6*self.home.dt]]
             elif state == "ghi_12hr":
-                obs += [self.home.all_ghi[self.home.start_slice + 12*self.home.dt] / np.max(self.home.all_ghi)]
+                obs += [self.home.all_ghi[self.home.start_slice + 12*self.home.dt]]
             elif state == "t_in":
-                obs += [(self.home.optimal_vals["temp_in_opt"] - self.home.hvac.t_in_min_current.value[0]) / (self.home.hvac.t_in_max_current.value[0] - self.home.hvac.t_in_min_current.value[0])]
+                obs += [self.home.optimal_vals["temp_in_opt"]]
             elif state == "t_wh":
-                obs += [(self.home.optimal_vals["temp_wh_opt"] - self.home.wh.temp_wh_min.value )/(self.home.wh.temp_wh_max.value - self.home.wh.temp_wh_min.value)]
+                obs += [self.home.optimal_vals["temp_wh_opt"]]
             elif state == "e_ev":
                 obs += [self.home.optimal_vals["e_ev_opt"]]
             elif state == "time_of_day":
@@ -180,7 +180,6 @@ class PlayerHome(gym.Env):
         Calculates a score for the player in the game.
         :return: dictionary of key performance indexes
         """
-        print(self.demand_profile)
         kpis = {"std_demand": [np.std(self.demand_profile)], "max_demand": [np.max(self.demand_profile)]}
 
         kpis_df = pd.DataFrame(kpis)
@@ -232,7 +231,7 @@ class PlayerHome(gym.Env):
 
         self.demand_profile += [self.home.optimal_vals["p_grid_opt"]]
 
-        return self.get_obs(), self.get_reward(), False, {}
+        return self.get_obs() #, self.get_reward(), False, {}
 
     async def await_status(self, status):
         """
