@@ -156,7 +156,7 @@ class RLAggregator(Aggregator):
 
                     await asyncio.sleep(0.1)
             except asyncio.TimeoutError:
-                self.log.logger.error("TIMEOUT (No update from MPC players.)")
+                self.log.logger.info("TIMEOUT (No update from MPC players yet.)")
                 pass
 
         return

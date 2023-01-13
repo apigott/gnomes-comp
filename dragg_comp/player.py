@@ -180,7 +180,12 @@ class PlayerHome(gym.Env):
         Calculates a score for the player in the game.
         :return: dictionary of key performance indexes
         """
-        kpis = {"std_demand": [np.std(self.demand_profile)], "max_demand": [np.max(self.demand_profile)]}
+        redis_client = rc.connection(self.redis_url)
+        contribution2peak = float(redis_client.hget("peak_contribution", self.name))
+        kpis = {"std_demand": [np.std(self.demand_profile)], 
+            "max_demand": [np.max(self.demand_profile)], 
+            "l2_norm": [np.linalg.norm(self.demand_profile)], 
+            "contribution2peak": [contribution2peak]}
 
         kpis_df = pd.DataFrame(kpis)
         kpis_df.to_csv("outputs/score.csv")
@@ -193,6 +198,7 @@ class PlayerHome(gym.Env):
         Redefines the OpenAI Gym environment step.
         :return: observation (list of floats), reward (float), is_done (bool), debug_info (set)
         """
+        action = list(action)
         self.nstep += 1
         if not os.path.isdir("home_logs"):
             os.mkdir("home_logs")
@@ -212,13 +218,13 @@ class PlayerHome(gym.Env):
         self.home.add_base_constraints()
         if action is not None:
             if "ev_charge" in self.actions and "ev" in self.home.devices:
-                self.home.ev.override_charge(action[-1]) # overrides the p_ch for the electric vehicle
-                action = action[:-1]
+                self.home.ev.override_charge(action.pop()) # overrides the p_ch for the electric vehicle
+                # action = action[:-1]
             if "wh_setpoint" in self.actions and "wh" in self.home.devices:
-                self.home.wh.override_p_wh(action[-1]) # same but for waterheater
-                action = action[:-1]
+                self.home.wh.override_p_wh(action.pop()) # same but for waterheater
+                # action = action[:-1]
             if "hvac_setpoint" in self.actions and "hvac" in self.home.devices:
-                self.home.hvac.override_t_in(action[-1]) # changes thermal deadband to new lower/upper bound
+                self.home.hvac.override_t_in(action.pop()) # changes thermal deadband to new lower/upper bound
         self.home.set_p_grid()
         self.home.solve_mpc(debug=True)
         self.home.cleanup_and_finish()
