@@ -6,6 +6,7 @@ import os
 import sys
 from copy import copy, deepcopy
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 import time
 import json
@@ -35,6 +36,27 @@ class RLAggregator(Aggregator):
         super().__init__(start, end, redis_url)
         self.overwrite_output = True
         self.mpc_players = [] # RLAggregator distinguishes between comp controlled (mpc_players) and human players
+        self.case = 'gnomes'
+
+    def get_home_names(self):
+        all_home_names = super().get_home_names()
+        all_home_names[0] = "PLAYER"
+        return all_home_names
+
+    def get_hems_params(self, override_horizon=False):
+        """
+        Returns a set of parameters for the home energy management system.
+        """
+        horizon = 1 if override_horizon else np.random.randint(self.config['home']['hems']['prediction_horizon'])
+        responsive_hems = {
+            "horizon": horizon,
+            "hourly_agg_steps": self.dt,
+            "sub_subhourly_steps": self.config['home']['hems']['sub_subhourly_steps'],
+            "solver": self.config['home']['hems']['solver'],
+            "discount_factor": self.config['home']['hems']['discount_factor'],
+            "weekday_occ_schedule": self.config['home']['hems']['weekday_occ_schedule']
+        }
+        return responsive_hems
 
     def get_homes(self):
         """
@@ -82,16 +104,16 @@ class RLAggregator(Aggregator):
 
         return 
 
-    async def post_status(self, status):
+    async def post_status(self, status,  channel: aioredis.client.PubSub, redis_client):
         """
         :input: Status (string)
         Publishes a status (typically "is done" to alert the aggregator)
         :return: None
         """
-        async_redis = aioredis.from_url(self.redis_url)
-        pubsub = async_redis.pubsub()
-        await pubsub.subscribe("channel:1")
-        await async_redis.publish("channel:1", f"{status}.")
+        # redis = aioredis.from_url(self.redis_url)
+        # pubsub = redis.pubsub()
+        await pubsub.subscribe("channel:1", "channel:2")
+        await redis.publish("channel:1", status)
         return 
 
     async def await_player(self, channel: aioredis.client.PubSub, redis_client):
@@ -111,7 +133,7 @@ class RLAggregator(Aggregator):
                             elif i == self.config['community']['n_players']: # now we know that the whole community has stepped
                                 i = 0
                                 self.post_next_home(initialize_mpc=True)
-                                await self.post_status("all ready")
+                                await redis_client.publish("channel:1", "all ready")
                                 break
                     await asyncio.sleep(0.1)
             except asyncio.TimeoutError:
@@ -122,7 +144,8 @@ class RLAggregator(Aggregator):
         """
         Opens an asynchronous subscription to the specified PubSub channel on Redis. Awaits player 
         controlled homes to announce that they've finished one timestep (or completed their initialization)
-        and made a control decision and implement it, then implements all computer controlled actions.
+        and made a control decision and implement it, then implements all computer controlled actions
+        simaultaneously.
         :return None:
         """
 
@@ -130,7 +153,7 @@ class RLAggregator(Aggregator):
         self.next_ts = 1
         while True:
             try:
-                async with async_timeout.timeout(1):
+                async with async_timeout.timeout(3):
                     message = await channel.get_message(ignore_subscribe_messages=True)
                     if message is not None:
                         if str(self.next_ts) in message["data"].decode():
@@ -141,7 +164,6 @@ class RLAggregator(Aggregator):
                                     self.run_iteration()
                                     await redis_client.publish("channel:1", "timestep can be moved forward")
                                     self.collect_data()
-
                                     i = 0
                                     self.next_ts += 1
                                 i += 1
@@ -155,6 +177,7 @@ class RLAggregator(Aggregator):
                             self.next_ts = 1
 
                     await asyncio.sleep(0.1)
+            
             except asyncio.TimeoutError:
                 self.log.logger.info("TIMEOUT (No update from MPC players yet.)")
                 pass
@@ -168,7 +191,7 @@ class RLAggregator(Aggregator):
         :return: None
         """
         self.log.logger.info("Made it to Aggregator Run")
-
+        print(1)
         self.checkpoint_interval = 500 # default to checkpoints every 1000 timesteps
         if self.config['simulation']['checkpoint_interval'] == 'hourly':
             self.checkpoint_interval = self.dt
@@ -177,22 +200,28 @@ class RLAggregator(Aggregator):
         elif self.config['simulation']['checkpoint_interval'] == 'weekly':
             self.checkpoint_interval = self.dt * 24 * 7
 
+        # set the version of the run for storing output files
         self.version = self.config['simulation']['named_version']
         self.set_run_dir()
-
         self.case = "baseline" # no aggregator level control
+        
+        # flush the database that we read/write to
         self.flush_redis()
         self.get_homes()
         self.post_next_home()
         self.reset_collected_data()
-        
+
+        # everything is ready to begin the simulation (let players know)
         self.log.logger.info("Starting aioredis listener...")
         redis = aioredis.from_url(self.redis_url)
         pubsub = redis.pubsub()
         await pubsub.subscribe("channel:1", "channel:2")
         await redis.publish("channel:1", "ready")
 
+        # initialize all players with their params (write to redis, players read)
         await asyncio.create_task(self.await_player(pubsub, redis))
+
+        # creates the main loop for updating at each and every timestep
         await asyncio.create_task(self.reader(pubsub, redis))
 
 if __name__=="__main__":

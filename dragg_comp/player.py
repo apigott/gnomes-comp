@@ -6,27 +6,24 @@ from datetime import datetime
 from copy import deepcopy
 import numpy as np
 import pandas as pd
+import pathos
 
 # redis with asyncronous implementation
 from redis import StrictRedis
 import redis
-import pathos
 import asyncio
 import aioredis
 import async_timeout
+import selectors
 
 # openAI gym
 import gym
 from gym.spaces import Box
 
-# from dragg.redis_client import RedisClient
 import dragg.redis_client as rc
 from dragg.logger import Logger
 from dragg.mpc_calc import MPCCalc
 from dragg_comp.agent import RandomAgent
-
-import selectors
-
 
 
 REDIS_URL = "redis://localhost"
@@ -56,14 +53,22 @@ class PlayerHome(gym.Env):
         asyncio.set_event_loop(loop)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.post_status("initialized player"))
+        print(1)
         loop.run_until_complete(self.await_status("all ready"))
+        print(2)
         loop.close()
         self.demand_profile = []
         self.reset(initialize=True)
 
     def update_states(self, obs_dict):
+        """
+        Resets the state space to accomodate custom filtering by players. (Defaults
+        to a state space that utilizes all available data.)
+        :return: None
+        """
         self.states = [k for k, v in obs_dict.items() if v]
         self.observation_space = Box(-1, 1, shape=(len(self.states), ))
+        return
 
     def reset(self, initialize=False):
         """
@@ -100,7 +105,7 @@ class PlayerHome(gym.Env):
         home['hvac'] = redis_client.hgetall("hvac_values")
         home['wh'] = redis_client.hgetall("wh_values")
         home['hems'] = redis_client.hgetall("hems_values")
-        home['hems']["weekday_occ_schedule"] = [[19,8],[17,18]]
+        home['hems']['horizon'] = 1
         if 'battery' in home['type']:
             home['battery'] = redis_client.hgetall("battery_values")
         if 'pv' in home['type']:
@@ -182,10 +187,10 @@ class PlayerHome(gym.Env):
         """
         redis_client = rc.connection(self.redis_url)
         contribution2peak = float(redis_client.hget("peak_contribution", self.name))
-        kpis = {"std_demand": [np.std(self.demand_profile)], 
-            "max_demand": [np.max(self.demand_profile)], 
+        kpis = { 
             "l2_norm": [np.linalg.norm(self.demand_profile)], 
-            "contribution2peak": [contribution2peak]}
+            "contribution2peak": [contribution2peak]
+            }
 
         kpis_df = pd.DataFrame(kpis)
         kpis_df.to_csv("outputs/score.csv")
@@ -218,15 +223,14 @@ class PlayerHome(gym.Env):
         self.home.add_base_constraints()
         if action is not None:
             if "ev_charge" in self.actions and "ev" in self.home.devices:
-                self.home.ev.override_charge(action.pop()) # overrides the p_ch for the electric vehicle
-                # action = action[:-1]
+                self.home.constraints += self.home.ev.override_charge(action[2]) # overrides the p_ch for the electric vehicle
             if "wh_setpoint" in self.actions and "wh" in self.home.devices:
-                self.home.wh.override_p_wh(action.pop()) # same but for waterheater
-                # action = action[:-1]
+                self.home.constraints += self.home.wh.override_p_wh(action[1]) # same but for waterheater
             if "hvac_setpoint" in self.actions and "hvac" in self.home.devices:
-                self.home.hvac.override_t_in(action.pop()) # changes thermal deadband to new lower/upper bound
+                self.home.constraints += self.home.hvac.override_t_in(action[0]) # changes thermal deadband to new lower/upper bound
         self.home.set_p_grid()
-        self.home.solve_mpc(debug=True)
+        # self.home.solve_mpc(debug=True)
+        self.home.solve_local_control()
         self.home.cleanup_and_finish()
         self.home.redis_write_optimal_vals()
 
@@ -261,6 +265,7 @@ class PlayerHome(gym.Env):
                         else:
                             await asyncio.sleep(0.1)
             except asyncio.TimeoutError:
+                print("player timed out")
                 pass
         return
 
