@@ -47,15 +47,9 @@ class RLAggregator(Aggregator):
         """
         Returns a set of parameters for the home energy management system.
         """
-        horizon = 1 if override_horizon else np.random.randint(self.config['home']['hems']['prediction_horizon'])
-        responsive_hems = {
-            "horizon": horizon,
-            "hourly_agg_steps": self.dt,
-            "sub_subhourly_steps": self.config['home']['hems']['sub_subhourly_steps'],
-            "solver": self.config['home']['hems']['solver'],
-            "discount_factor": self.config['home']['hems']['discount_factor'],
-            "weekday_occ_schedule": self.config['home']['hems']['weekday_occ_schedule']
-        }
+        responsive_hems = super().get_hems_params()
+        if override_horizon:
+            responsive_hems["horizon"] = 1
         return responsive_hems
 
     def get_homes(self):

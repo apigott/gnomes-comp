@@ -53,9 +53,7 @@ class PlayerHome(gym.Env):
         asyncio.set_event_loop(loop)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.post_status("initialized player"))
-        print(1)
         loop.run_until_complete(self.await_status("all ready"))
-        print(2)
         loop.close()
         self.demand_profile = []
         self.reset(initialize=True)
