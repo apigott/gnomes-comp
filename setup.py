@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(name='dragg-comp',
       license='MIT',
-      version='0.3.10',
+      version='0.4.2',
       author='Aisling Pigott and Jacob Kravits',
       author_email='aisling.pigott@colorado.edu',
       packages=find_packages(),
@@ -14,7 +14,10 @@ setup(name='dragg-comp',
         'pathos',
         'datetime',
         'async-timeout',
-        'dragg'
+        'dragg',
+        'cvxopt',
+        'stable-baselines3',
+        'kaleido'
         ],
       py_modules=['dragg_comp'],
       classifiers=[
