@@ -185,7 +185,6 @@ class RLAggregator(Aggregator):
         :return: None
         """
         self.log.logger.info("Made it to Aggregator Run")
-        print(1)
         self.checkpoint_interval = 500 # default to checkpoints every 1000 timesteps
         if self.config['simulation']['checkpoint_interval'] == 'hourly':
             self.checkpoint_interval = self.dt
