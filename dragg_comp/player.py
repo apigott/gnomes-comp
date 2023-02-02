@@ -152,7 +152,7 @@ class PlayerHome(gym.Env):
             elif state == "e_ev":
                 obs += [self.home.optimal_vals["e_ev_opt"]]
             elif state == "time_of_day":
-                tod = self.home.timestep % (24 * self.home.dt) / 24
+                tod = self.home.timestep % (24 * self.home.dt)
                 obs += [tod]
             elif state == "community_demand":
                 community_demand = self.home.redis_client.hget("current_values", "current_demand")
@@ -161,6 +161,8 @@ class PlayerHome(gym.Env):
                 obs += [community_demand / (self.home.max_load / 5) - 1]
             elif state == "my_demand":
                 obs += [2 * self.home.optimal_vals["p_grid_opt"] / self.home.max_load - 1]
+            elif state == "day_of_week":
+                obs += [self.home.current_weekday[0]]
             else:
                 skip = True
                 self.log.logger.warn(f"MISSING {state}")
