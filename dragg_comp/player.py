@@ -162,7 +162,7 @@ class PlayerHome(gym.Env):
             elif state == "my_demand":
                 obs += [2 * self.home.optimal_vals["p_grid_opt"] / self.home.max_load - 1]
             elif state == "day_of_week":
-                obs += [self.home.current_weekday[0]]
+                obs += [self.home.weekday_current[0]]
             else:
                 skip = True
                 self.log.logger.warn(f"MISSING {state}")

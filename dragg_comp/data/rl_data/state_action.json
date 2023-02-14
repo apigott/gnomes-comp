@@ -14,7 +14,8 @@
 	"e_ev":				true,
 	"time_of_day":		true,
 	"community_demand":	true,
-	"my_demand": 		true
+	"my_demand": 		true,
+	"day_of_week":		true
 	},
 "actions":{
 	"hvac_setpoint":false,
