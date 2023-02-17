@@ -10,7 +10,7 @@ def normalization(home):
 	print("WARN: No custom normalization function defined. Defaulting to all observations unnormalized.")
 	return list(home.obs_dict.values())
 
-def reward():
+def reward(home):
 	print("WARN: No custom reward function defined. Defaulting to zero.")
 	return 0
 
