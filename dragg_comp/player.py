@@ -222,12 +222,13 @@ class PlayerHome(gym.Env):
         self.home.get_initial_conditions()
         self.home.add_base_constraints()
         if action is not None:
-            if "ev_charge" in self.actions and "ev" in self.home.devices:
-                self.home.constraints += self.home.ev.override_charge(action[2]) # overrides the p_ch for the electric vehicle
-            if "wh_setpoint" in self.actions and "wh" in self.home.devices:
-                self.home.constraints += self.home.wh.override_p_wh(action[1]) # same but for waterheater
             if "hvac_setpoint" in self.actions and "hvac" in self.home.devices:
                 self.home.constraints += self.home.hvac.override_t_in(action[0]) # changes thermal deadband to new lower/upper bound
+            if "wh_setpoint" in self.actions and "wh" in self.home.devices:
+                self.home.constraints += self.home.wh.override_p_wh(action[1]) # same but for waterheater
+            if "ev_charge" in self.actions and "ev" in self.home.devices:
+                self.home.constraints += self.home.ev.override_charge(action[2]) # overrides the p_ch for the electric vehicle
+                
         self.home.set_p_grid()
         # self.home.solve_mpc(debug=True)
         self.home.solve_local_control()

@@ -6,8 +6,16 @@ from dragg_comp.player import PlayerHome
 
 REDIS_URL = "redis://localhost"
 
+def normalization(home):
+	print("WARN: No custom normalization function defined. Defaulting to all observations unnormalized.")
+	return list(home.obs_dict.values())
+
+def reward():
+	print("WARN: No custom reward function defined. Defaulting to zero.")
+	return 0
+
 class RLTrainingEnv(PlayerHome):
-	def __init__(self, redis_url=REDIS_URL, normalization, reward):
+	def __init__(self, redis_url=REDIS_URL, normalization=None, reward=None):
 		"""
 		Creates a custom implementation of the GNOMES environment based on the OpenAI gym environment.
 		Players should pass a normalization function (to return a list of states, given the env) and
